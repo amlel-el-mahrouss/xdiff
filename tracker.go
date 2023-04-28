@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/martinohmann/go-difflib/difflib"
 	"log"
 	"os"
 	"strings"
@@ -95,10 +96,63 @@ func (s *gocsContext) init(root string) int {
 	return gocsReadConf(s)
 }
 
-func gocsWriteTracked(fp *os.File, diff []byte) int {
-	_, err := fp.Write(diff)
+func gocsWriteTracked(fp *os.File, diff []byte, diffPath string) int {
+	var diffFp []byte
+
+	_, err := os.Create(fp.Name() + ".diff")
 
 	if err != nil {
+		println(err)
+		return gocsFatalError
+	}
+
+	var fdDiff *os.File
+	fdDiff, err = os.OpenFile(fp.Name()+".diff", os.O_RDWR, 0664)
+
+	_, err = fdDiff.Read(diffFp)
+	if err != nil {
+		return gocsAccessError
+	}
+
+	println(diffPath)
+	println(fp.Name())
+
+	stageDiff, _ := os.ReadFile(diffPath)
+	originalDiff, _ := os.ReadFile(fp.Name())
+
+	theDiff := difflib.UnifiedDiff{
+		B:        difflib.SplitLines(string(stageDiff)),
+		A:        difflib.SplitLines(string(originalDiff)),
+		FromFile: fp.Name(),
+		ToFile:   diffPath,
+		Context:  3,
+		Color:    true}
+
+	text, _ := difflib.GetUnifiedDiffString(theDiff)
+
+	if err != nil {
+		println(err)
+		return gocsFatalError
+	}
+
+	_, err = fdDiff.WriteString(text)
+
+	if err != nil {
+		println(err)
+		return gocsFatalError
+	}
+
+	_, err = fp.Seek(0, 0)
+
+	if err != nil {
+		println(err)
+		return gocsFatalError
+	}
+
+	_, err = fp.Write(diff)
+
+	if err != nil {
+		println(err)
 		return gocsFatalError
 	}
 
@@ -138,12 +192,12 @@ func gocsUpdateTrack(s *gocsContext, filename string, diff []byte) int {
 			}
 		}
 
-		return gocsWriteTracked(fp, diff)
+		return gocsWriteTracked(fp, diff, filename)
 	} else {
 		fp, err = os.OpenFile(fullPath, os.O_WRONLY, 0644)
 	}
 
-	return gocsWriteTracked(fp, diff)
+	return gocsWriteTracked(fp, diff, filename)
 }
 
 func gocsAddToTrackingList(tracked []string, trackedName string) {
@@ -194,6 +248,14 @@ func (s *gocsContext) untrack(filename string) int {
 		if strings.Contains(file, filename) {
 			s.files = append(s.files[:i], s.files[i+1:]...)
 			s.files = append(s.files, "--:"+filename)
+
+			var fullPath = s.root + "/track/" + filename
+
+			err := os.Remove(fullPath)
+
+			if err != nil {
+				return gocsAccessError
+			}
 
 			return gocsOk
 		}
