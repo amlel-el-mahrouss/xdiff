@@ -18,11 +18,11 @@ const (
 )
 
 type gocsContext struct {
-	root     string // /usr/aml/my_project/
-	rev      string // version control version (what version of gocs
-	rootCfg  string // the version control root config path.
-	files    []string
-	rootFile *os.File
+	root      string // /usr/aml/my_project/
+	rev       string // version control version (what version of gocs
+	rootCfg   string // the version control root config path.
+	fileArray []string
+	rootFile  *os.File
 }
 
 const (
@@ -40,7 +40,7 @@ func gocsReadConf(ctx *gocsContext) int {
 		return gocsFatalError
 	}
 
-	ctx.files = make([]string, offset)
+	ctx.fileArray = make([]string, offset)
 
 	_, err = ctx.rootFile.Seek(0, 0)
 
@@ -48,9 +48,9 @@ func gocsReadConf(ctx *gocsContext) int {
 		return gocsFatalError
 	} // why did they deprecate SEEK_SET ???? what the fuck
 
-	// iterate over the newly allocated 'files' array
+	// iterate over the newly allocated 'fileArray' array
 	// and then populate it
-	for fileIndex, _ := range ctx.files {
+	for fileIndex, _ := range ctx.fileArray {
 		var path []byte = make([]byte, gocsMaxPath)
 		_, err := ctx.rootFile.Read(path)
 
@@ -62,7 +62,7 @@ func gocsReadConf(ctx *gocsContext) int {
 			return gocsAccessError
 		}
 
-		ctx.files[fileIndex] = string(path)
+		ctx.fileArray[fileIndex] = string(path)
 	}
 
 	return gocsOk
@@ -211,10 +211,10 @@ func (s *gocsContext) track(filename string) int {
 		return gocsFatalError
 	}
 
-	for i, file := range s.files {
+	for i, file := range s.fileArray {
 		if strings.Contains(file, filename) {
-			s.files = append(s.files[:i], s.files[i+1:]...)
-			s.files = append(s.files[:i], "--/++:"+filename+"\n")
+			s.fileArray = append(s.fileArray[:i], s.fileArray[i+1:]...)
+			s.fileArray = append(s.fileArray[:i], "--/++:"+filename+"\n")
 
 			if err != nil {
 				return gocsAccessError // well unmount has been called I guess...
@@ -233,7 +233,7 @@ func (s *gocsContext) track(filename string) int {
 		return gocsFatalError
 	}
 
-	gocsAddToTrackingList(s.files, filename)
+	gocsAddToTrackingList(s.fileArray, filename)
 
 	fmt.Printf("++ %s\n", filename)
 	gocsUpdateTrack(s, filename, diff)
@@ -242,12 +242,12 @@ func (s *gocsContext) track(filename string) int {
 }
 
 func (s *gocsContext) untrack(filename string) int {
-	cpy := s.files
+	cpy := s.fileArray
 
 	for i, file := range cpy {
 		if strings.Contains(file, filename) {
-			s.files = append(s.files[:i], s.files[i+1:]...)
-			s.files = append(s.files, "--:"+filename)
+			s.fileArray = append(s.fileArray[:i], s.fileArray[i+1:]...)
+			s.fileArray = append(s.fileArray, "--:"+filename)
 
 			var fullPath = s.root + "/track/" + filename
 
@@ -281,7 +281,7 @@ func (s *gocsContext) exit() {
 		panic(err)
 	}
 
-	for _, file := range s.files {
+	for _, file := range s.fileArray {
 		_, err := s.rootFile.WriteString(file)
 
 		if err != nil {
